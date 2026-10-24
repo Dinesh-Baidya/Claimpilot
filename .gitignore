@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+claimpilot.db
+.env
+cards/playground_samples/

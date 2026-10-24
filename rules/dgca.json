@@ -1,0 +1,80 @@
+{
+  "regime": "DGCA_CAR_M_IV",
+  "name": "DGCA Civil Aviation Requirements, Section 3 - Air Transport Series M Part IV Issue I",
+  "version": "Rev 3",
+  "effective_from": "2016-08-01",
+  "effective_to": null,
+  "source_url": "https://www.dgca.gov.in/digigov-portal/?page=4056/CAR-Section-3-Series-M-Part-IV",
+  "verified_on": "2026-10-24",
+  "notes": "Verified directly from DGCA CAR Series M Part IV official provisions. Covers cancellations, delays, and denied boarding for domestic and originating international flights from India.",
+  "currency": "INR",
+  "cancellation_compensation_tiers": [
+    {
+      "tier": 1,
+      "block_time_description": "Flights having a block time of up to 1 hour",
+      "max_block_time_hours": 1.0,
+      "max_compensation_inr": 5000,
+      "rule": "INR 5,000 or one-way booked basic fare plus airline fuel charge, whichever is less"
+    },
+    {
+      "tier": 2,
+      "block_time_description": "Flights having a block time of more than 1 hour and up to 2 hours",
+      "max_block_time_hours": 2.0,
+      "max_compensation_inr": 7500,
+      "rule": "INR 7,500 or one-way booked basic fare plus airline fuel charge, whichever is less"
+    },
+    {
+      "tier": 3,
+      "block_time_description": "Flights having a block time of more than 2 hours",
+      "max_block_time_hours": null,
+      "max_compensation_inr": 10000,
+      "rule": "INR 10,000 or one-way booked basic fare plus airline fuel charge, whichever is less"
+    }
+  ],
+  "cancellation_notice_conditions": {
+    "more_than_2_weeks": {
+      "compensation_due": false,
+      "remedy": "Alternate flight or full refund of ticket price"
+    },
+    "between_24_hours_and_2_weeks": {
+      "compensation_due": false,
+      "remedy": "Alternate flight or refund of ticket value as preferred by the passenger"
+    },
+    "less_than_24_hours": {
+      "compensation_due": true,
+      "remedy": "Financial compensation as per block time tiers PLUS alternate flight or full refund"
+    }
+  },
+  "delay_care_provisions": {
+    "block_time_up_to_2h": {
+      "delay_threshold_hours": 2.0,
+      "remedy": "Free meals and refreshments"
+    },
+    "block_time_2h_to_4h": {
+      "delay_threshold_hours": 3.0,
+      "remedy": "Free meals and refreshments"
+    },
+    "block_time_over_4h": {
+      "delay_threshold_hours": 4.0,
+      "remedy": "Free meals and refreshments"
+    },
+    "delay_over_6h": {
+      "remedy": "Rescheduled flight or 100% full refund"
+    },
+    "overnight_delay": {
+      "remedy": "Free hotel accommodation including transport to/from airport"
+    }
+  },
+  "defence_rules": {
+    "extraordinary_circumstances_exempt": true,
+    "burden_of_proof": "airline",
+    "technical_defect_exempt": false,
+    "exempt_causes": [
+      "weather_below_minima",
+      "air_traffic_control",
+      "civil_unrest",
+      "security_threat",
+      "natural_calamity"
+    ]
+  }
+}

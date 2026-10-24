@@ -1,0 +1,54 @@
+{
+  "regime": "EU261",
+  "name": "Regulation (EC) No 261/2004",
+  "version": "2004.1",
+  "effective_from": "2005-02-17",
+  "effective_to": "2027-01-01",
+  "source_url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=celex%3A32004R0261",
+  "verified_on": "2026-10-24",
+  "notes": "Provisional EU reform agreed June 2026 preserves €250-€600 tiers and 3-hour delay threshold; expected implementation in 2027. Current EC 261/2004 applies to present claims.",
+  "currency": "EUR",
+  "distance_bands": [
+    {
+      "band": 1,
+      "description": "Flights of 1,500 km or less",
+      "max_distance_km": 1500,
+      "compensation_eur": 250
+    },
+    {
+      "band": 2,
+      "description": "Intra-Community flights over 1,500 km, or other flights between 1,500 km and 3,500 km",
+      "max_distance_km": 3500,
+      "compensation_eur": 400
+    },
+    {
+      "band": 3,
+      "description": "All flights not falling under Band 1 or Band 2 (over 3,500 km)",
+      "max_distance_km": null,
+      "compensation_eur": 600
+    }
+  ],
+  "delay_threshold_hours": 3.0,
+  "cancellation_notice_rules": {
+    "more_than_14_days": {
+      "compensation_due": false,
+      "right_to_refund_or_reroute": true,
+      "right_to_care": false
+    },
+    "between_7_and_14_days": {
+      "compensation_due": true,
+      "exemption_condition": "Rerouting offered departs <= 2h before original and arrives < 4h after original scheduled arrival"
+    },
+    "less_than_7_days": {
+      "compensation_due": true,
+      "exemption_condition": "Rerouting offered departs <= 1h before original and arrives < 2h after original scheduled arrival"
+    }
+  },
+  "defence_rules": {
+    "extraordinary_circumstances_exempt": true,
+    "burden_of_proof": "airline",
+    "technical_defect_exempt": false,
+    "crew_shortage_exempt": false,
+    "severe_weather_exempt": true
+  }
+}

@@ -48,30 +48,42 @@ class ClaimStateMachine:
             """)
             conn.commit()
 
-    def get_or_create_session(self, session_id: str, sender: str = "") -> Dict[str, Any]:
+    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an existing session by its session_id."""
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT state, data_json FROM sessions WHERE session_id = ?", (session_id,))
+            cur.execute("SELECT state, data_json, sender FROM sessions WHERE session_id = ?", (session_id,))
             row = cur.fetchone()
             if row:
                 return {
                     "session_id": session_id,
                     "state": row[0],
-                    "data": json.loads(row[1]) if row[1] else {}
+                    "data": json.loads(row[1]) if row[1] else {},
+                    "sender": row[2]
                 }
-            else:
-                initial_data = {}
-                now = datetime.utcnow().isoformat()
-                cur.execute(
-                    "INSERT INTO sessions (session_id, sender, state, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (session_id, sender, "INTAKE", json.dumps(initial_data), now, now)
-                )
-                conn.commit()
-                return {
-                    "session_id": session_id,
-                    "state": "INTAKE",
-                    "data": initial_data
-                }
+            return None
+
+    def get_or_create_session(self, session_id: str, sender: str = "") -> Dict[str, Any]:
+        """Fetch existing session or create a new one with initial state INTAKE."""
+        existing = self.get_session(session_id)
+        if existing:
+            return existing
+
+        initial_data = {}
+        now = datetime.utcnow().isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO sessions (session_id, sender, state, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, sender, "INTAKE", json.dumps(initial_data), now, now)
+            )
+            conn.commit()
+            return {
+                "session_id": session_id,
+                "state": "INTAKE",
+                "data": initial_data,
+                "sender": sender
+            }
 
     def update_session(self, session_id: str, state: str, data: Dict[str, Any]):
         now = datetime.utcnow().isoformat()
@@ -97,7 +109,7 @@ class ClaimStateMachine:
     ) -> bool:
         """Record dispatched claim. Ensures idempotency against duplicate emails/dispatches."""
         now = time.time()
-        deadline = now + accelerated_seconds # Accelerated clock for demo mode
+        deadline = now + accelerated_seconds  # Accelerated clock for demo mode
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""

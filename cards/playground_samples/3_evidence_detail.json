@@ -1,0 +1,46 @@
+{
+  "title": "ClaimPilot Audit \u2022 VERDICT: ELIGIBLE FOR CASH COMPENSATION",
+  "summary_rows": [
+    {
+      "label": "Statutory Entitlement",
+      "value": "250 EUR (Band 1 (<= 1,500 km))"
+    },
+    {
+      "label": "Governing Regulation",
+      "value": "Regulation (EC) No 261/2004"
+    },
+    {
+      "label": "Statutory Legal Basis",
+      "value": "Article 7(1)(a) of Regulation (EC) No 261/2004"
+    },
+    {
+      "label": "Claim Strength Score",
+      "value": "85/100 (HIGH PROBABILITY)"
+    },
+    {
+      "label": "Weather Plausibility",
+      "value": "LOW (Benign Operational Weather)"
+    },
+    {
+      "label": "Meteorological Audit",
+      "value": "Wind gusts: 18 km/h | Visibility: 10000m | Condition: Standard"
+    },
+    {
+      "label": "Carrier Burden of Proof",
+      "value": "Airline carries statutory burden to prove unavoidable extraordinary conditions"
+    },
+    {
+      "label": "Data Source Attribution",
+      "value": "Open-Meteo.com (CC BY 4.0)"
+    }
+  ],
+  "ctas": [
+    {
+      "label": "\ud83d\udcdd Proceed to Review Formal Legal Notice",
+      "selection": {
+        "action": "PROCEED_TO_DRAFT"
+      },
+      "primary": true
+    }
+  ]
+}

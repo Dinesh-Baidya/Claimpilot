@@ -1,0 +1,45 @@
+{
+  "title": "Human-in-the-Loop Claim Approval Gate",
+  "summary_rows": [
+    {
+      "label": "Claim Reference",
+      "value": "CP-CP-DEMO-01"
+    },
+    {
+      "label": "Claimant Passenger",
+      "value": "Alex Morgan"
+    },
+    {
+      "label": "Demanded Statutory Amount",
+      "value": "\u20ac250 EUR CASH"
+    },
+    {
+      "label": "Settlement Mandate",
+      "value": "Direct Cash/Wire Transfer (No Vouchers)"
+    },
+    {
+      "label": "Dispatcher Route",
+      "value": "Dry-Run Safe Mode (Routes to passenger@demo.com)"
+    },
+    {
+      "label": "Statutory Clock",
+      "value": "14 Calendar Days to Settlement"
+    }
+  ],
+  "approve_cta": {
+    "label": "\ud83d\ude80 Approve & Dispatch Notice to Airline",
+    "selection": {
+      "action": "APPROVE_AND_DISPATCH",
+      "claim_id": "CP-DEMO-01"
+    },
+    "primary": true
+  },
+  "reject_cta": {
+    "label": "\u274c Cancel Claim",
+    "selection": {
+      "action": "CANCEL_CLAIM",
+      "claim_id": "CP-DEMO-01"
+    },
+    "primary": false
+  }
+}

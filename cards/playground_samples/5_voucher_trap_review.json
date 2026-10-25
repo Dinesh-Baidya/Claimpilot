@@ -1,0 +1,37 @@
+{
+  "title": "\u26a0\ufe0f Airline Voucher Trap Detected!",
+  "summary_rows": [
+    {
+      "label": "\u26a0\ufe0f Detection",
+      "value": "Airline Proposed Non-Statutory Travel Voucher"
+    },
+    {
+      "label": "Carrier Offer",
+      "value": "\u20ac200 Travel Credit"
+    },
+    {
+      "label": "Statutory Right",
+      "value": "\u20ac250 EUR Cash Cash / Wire Transfer"
+    },
+    {
+      "label": "Governing Law",
+      "value": "EU261 Art 7(3) & DGCA CAR M IV require monetary payment"
+    }
+  ],
+  "approve_cta": {
+    "label": "\u2696\ufe0f Reject Voucher & Demand Statutory Cash",
+    "selection": {
+      "action": "REJECT_VOUCHER_DEMAND_CASH",
+      "claim_id": "CP-DEMO-01"
+    },
+    "primary": true
+  },
+  "reject_cta": {
+    "label": "Accept Airline Voucher",
+    "selection": {
+      "action": "ACCEPT_VOUCHER",
+      "claim_id": "CP-DEMO-01"
+    },
+    "primary": false
+  }
+}

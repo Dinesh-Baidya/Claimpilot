@@ -1,0 +1,34 @@
+{
+  "title": "Disambiguation \u2022 Select Disrupted Leg",
+  "subtitle": "Multiple matched legs found on this date. Select the disrupted flight.",
+  "items": [
+    {
+      "id": "leg-1",
+      "title": "AF1680 \u2022 CDG \u2794 LHR",
+      "subtitle": "Scheduled: 10:30 UTC | Airline: Air France",
+      "secondary_text": "Distance: 348 km | Status: CANCELLED",
+      "primary_cta": {
+        "label": "Select This Leg",
+        "selection": {
+          "action": "SELECT_LEG",
+          "selected_flight_id": "leg-1"
+        },
+        "primary": true
+      }
+    },
+    {
+      "id": "leg-2",
+      "title": "BA307 \u2022 CDG \u2794 LHR",
+      "subtitle": "Scheduled: 14:15 UTC | Airline: British Airways",
+      "secondary_text": "Distance: 348 km | Status: ON TIME",
+      "primary_cta": {
+        "label": "Select This Leg",
+        "selection": {
+          "action": "SELECT_LEG",
+          "selected_flight_id": "leg-2"
+        },
+        "primary": true
+      }
+    }
+  ]
+}

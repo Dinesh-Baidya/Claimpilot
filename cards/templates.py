@@ -34,7 +34,11 @@ def create_chat_message(narration: str, card_content: Optional[MetadataContent] 
 # -------------------------------------------------------------
 # 1. INTAKE FORM CARD
 # -------------------------------------------------------------
-def build_intake_form_card(default_flight: str = "AF1680") -> MetadataContent:
+def build_intake_form_card(default_flight: str = "AF1680", session_id: Optional[str] = None) -> MetadataContent:
+    submit_selection: Dict[str, Any] = {"action": "SUBMIT_INTAKE"}
+    if session_id:
+        submit_selection["session_id"] = session_id
+
     payload = FormCardPayload(
         title="ClaimPilot • Flight Disruption Intake",
         fields=[
@@ -43,7 +47,7 @@ def build_intake_form_card(default_flight: str = "AF1680") -> MetadataContent:
                 kind="text",
                 label="Flight Number (e.g. AF1680, 6E205, AI803)",
                 required=True,
-                placeholder="AF1680"
+                placeholder=default_flight
             ),
             FormField(
                 name="flight_date",
@@ -105,7 +109,7 @@ def build_intake_form_card(default_flight: str = "AF1680") -> MetadataContent:
         ],
         submit_cta=CtaAction(
             label="⚖️ Evaluate Claim & Check Weather",
-            selection={"action": "SUBMIT_INTAKE"},
+            selection=submit_selection,
             primary=True
         )
     )
@@ -114,9 +118,12 @@ def build_intake_form_card(default_flight: str = "AF1680") -> MetadataContent:
 # -------------------------------------------------------------
 # 2. CAROUSEL CARD (Disambiguation)
 # -------------------------------------------------------------
-def build_flight_carousel_card(flight_matches: List[Dict[str, Any]]) -> MetadataContent:
+def build_flight_carousel_card(flight_matches: List[Dict[str, Any]], session_id: Optional[str] = None) -> MetadataContent:
     items = []
     for f in flight_matches:
+        sel: Dict[str, Any] = {"action": "SELECT_LEG", "selected_flight_id": f["id"]}
+        if session_id:
+            sel["session_id"] = session_id
         items.append(
             CarouselItem(
                 id=f["id"],
@@ -125,7 +132,7 @@ def build_flight_carousel_card(flight_matches: List[Dict[str, Any]]) -> Metadata
                 secondary_text=f"Distance: {f['distance_km']} km | Status: {f['status']}",
                 primary_cta=CtaAction(
                     label="Select This Leg",
-                    selection={"action": "SELECT_LEG", "selected_flight_id": f["id"]},
+                    selection=sel,
                     primary=True
                 )
             )
@@ -141,7 +148,7 @@ def build_flight_carousel_card(flight_matches: List[Dict[str, Any]]) -> Metadata
 # -------------------------------------------------------------
 # 3. EVIDENCE & VERDICT DETAIL CARD
 # -------------------------------------------------------------
-def build_evidence_detail_card(verdict: Dict[str, Any], weather: Dict[str, Any]) -> MetadataContent:
+def build_evidence_detail_card(verdict: Dict[str, Any], weather: Dict[str, Any], session_id: Optional[str] = None) -> MetadataContent:
     metrics = weather.get("metrics", {})
     weather_summary = (
         f"Wind gusts: {metrics.get('wind_gusts_kmh', 18)} km/h | "
@@ -163,13 +170,17 @@ def build_evidence_detail_card(verdict: Dict[str, Any], weather: Dict[str, Any])
         DetailSummaryRow(label="Data Source Attribution", value="Open-Meteo.com (CC BY 4.0)")
     ]
 
+    proceed_selection: Dict[str, Any] = {"action": "PROCEED_TO_DRAFT"}
+    if session_id:
+        proceed_selection["session_id"] = session_id
+
     payload = DetailCardPayload(
         title=f"ClaimPilot Audit • {badge_title}",
         summary_rows=summary_rows,
         ctas=[
             CtaAction(
                 label="📝 Proceed to Review Formal Legal Notice",
-                selection={"action": "PROCEED_TO_DRAFT"},
+                selection=proceed_selection,
                 primary=True
             )
         ]
@@ -183,7 +194,8 @@ def build_human_review_card(
     claim_id: str,
     passenger_name: str,
     amount_str: str,
-    dry_run_recipient: str
+    dry_run_recipient: str,
+    session_id: Optional[str] = None
 ) -> MetadataContent:
     summary_rows = [
         ReviewSummaryRow(label="Claim Reference", value=f"CP-{claim_id}"),
@@ -194,17 +206,23 @@ def build_human_review_card(
         ReviewSummaryRow(label="Statutory Clock", value="14 Calendar Days to Settlement")
     ]
 
+    approve_selection: Dict[str, Any] = {"action": "APPROVE_AND_DISPATCH", "claim_id": claim_id}
+    cancel_selection: Dict[str, Any] = {"action": "CANCEL_CLAIM", "claim_id": claim_id}
+    if session_id:
+        approve_selection["session_id"] = session_id
+        cancel_selection["session_id"] = session_id
+
     payload = ReviewCardPayload(
         title="Human-in-the-Loop Claim Approval Gate",
         summary_rows=summary_rows,
         approve_cta=CtaAction(
             label="🚀 Approve & Dispatch Notice to Airline",
-            selection={"action": "APPROVE_AND_DISPATCH", "claim_id": claim_id},
+            selection=approve_selection,
             primary=True
         ),
         reject_cta=CtaAction(
             label="❌ Cancel Claim",
-            selection={"action": "CANCEL_CLAIM", "claim_id": claim_id},
+            selection=cancel_selection,
             primary=False
         )
     )
@@ -213,7 +231,12 @@ def build_human_review_card(
 # -------------------------------------------------------------
 # 5. VOUCHER TRAP REVIEW CARD
 # -------------------------------------------------------------
-def build_voucher_trap_card(claim_id: str, voucher_amount: str, statutory_cash: str) -> MetadataContent:
+def build_voucher_trap_card(
+    claim_id: str,
+    voucher_amount: str,
+    statutory_cash: str,
+    session_id: Optional[str] = None
+) -> MetadataContent:
     summary_rows = [
         ReviewSummaryRow(label="⚠️ Detection", value="Airline Proposed Non-Statutory Travel Voucher"),
         ReviewSummaryRow(label="Carrier Offer", value=voucher_amount),
@@ -221,17 +244,23 @@ def build_voucher_trap_card(claim_id: str, voucher_amount: str, statutory_cash: 
         ReviewSummaryRow(label="Governing Law", value="EU261 Art 7(3) & DGCA CAR M IV require monetary payment")
     ]
 
+    reject_voucher_selection: Dict[str, Any] = {"action": "REJECT_VOUCHER_DEMAND_CASH", "claim_id": claim_id}
+    accept_voucher_selection: Dict[str, Any] = {"action": "ACCEPT_VOUCHER", "claim_id": claim_id}
+    if session_id:
+        reject_voucher_selection["session_id"] = session_id
+        accept_voucher_selection["session_id"] = session_id
+
     payload = ReviewCardPayload(
         title="⚠️ Airline Voucher Trap Detected!",
         summary_rows=summary_rows,
         approve_cta=CtaAction(
             label="⚖️ Reject Voucher & Demand Statutory Cash",
-            selection={"action": "REJECT_VOUCHER_DEMAND_CASH", "claim_id": claim_id},
+            selection=reject_voucher_selection,
             primary=True
         ),
         reject_cta=CtaAction(
             label="Accept Airline Voucher",
-            selection={"action": "ACCEPT_VOUCHER", "claim_id": claim_id},
+            selection=accept_voucher_selection,
             primary=False
         )
     )

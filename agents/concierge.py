@@ -7,8 +7,13 @@ idempotent dispatch, and statutory deadline tracking.
 import asyncio
 import json
 import logging
+import os
+import threading
+import time
 from datetime import datetime
 from uuid import uuid4
+
+import requests as _requests
 
 from uagents import Agent, Context, Protocol
 from uagents_core.contrib.protocols.chat import (
@@ -17,9 +22,9 @@ from uagents_core.contrib.protocols.chat import (
 from uagents_core.contrib.protocols.chat.cards import extract_card_response
 
 from config import (
-    AGENT_NAME, AGENT_SEED, AGENTVERSE_MAILBOX_KEY,
+    AGENT_NAME, AGENT_SEED,
     DEMO_MODE, ACCELERATED_CLOCK_SECONDS, DRY_RUN_EMAIL,
-    CARRIER_FLIGHTS, GEMINI_API_KEY
+    CARRIER_FLIGHTS, GEMINI_API_KEY, AGENTVERSE_MAILBOX_KEY
 )
 from engine.airport_db import get_airport
 from engine.weather_client import WeatherEvidenceClient
@@ -44,67 +49,127 @@ eligibility_engine = EligibilityEngine()
 drafter = ClaimDrafter(api_key=GEMINI_API_KEY)
 state_machine = ClaimStateMachine()
 
-# Create Agent (Supports Agentverse Mailbox or Local endpoint)
-agent_kwargs = {
-    "name": AGENT_NAME,
-    "seed": AGENT_SEED,
-    "port": 8000,
-    "endpoint": ["http://localhost:8000/submit"]
-}
-if AGENTVERSE_MAILBOX_KEY:
-    agent_kwargs["mailbox"] = f"{AGENTVERSE_MAILBOX_KEY}@https://agentverse.ai"
-
-agent = Agent(**agent_kwargs)
+# Chat protocol definition
 chat_proto = Protocol(name="AgentChatProtocol", version="1.0.0")
+
+
+def _auto_connect_to_agentverse():
+    """
+    Auto-connect to Agentverse after server is up.
+    Posts AGENTVERSE_MAILBOX_KEY to the local /connect endpoint so the agent
+    appears in agentverse.ai/agents and becomes @mentionable in ASI:One.
+    """
+    if not AGENTVERSE_MAILBOX_KEY:
+        logger.warning("AGENTVERSE_MAILBOX_KEY not set — skipping auto-connect.")
+        return
+    time.sleep(3)  # Wait for uvicorn to be ready
+    for attempt in range(5):
+        try:
+            resp = _requests.post(
+                "http://127.0.0.1:8000/connect",
+                json={"user_token": AGENTVERSE_MAILBOX_KEY, "agent_type": "custom"},
+                timeout=10,
+            )
+            if resp.status_code == 200 and resp.json().get("success"):
+                logger.info("✅ Auto-connected to Agentverse. Agent is @mentionable in ASI:One.")
+                return
+            else:
+                logger.warning(f"Auto-connect attempt {attempt+1} failed: {resp.text}")
+        except Exception as e:
+            logger.warning(f"Auto-connect attempt {attempt+1} error: {e}")
+        time.sleep(3)
+    logger.error("❌ Auto-connect to Agentverse failed after 5 attempts. Check your AGENTVERSE_MAILBOX_KEY.")
+
 
 def parse_incoming_selection(msg: ChatMessage) -> tuple[str, dict]:
     """
     Extracts user intent or card callback payload.
-    Supports JSON selections, card responses, and plain text fallbacks.
+    Supports:
+    1. Structured MetadataContent (CardResponse or selection metadata).
+    2. TextContent with JSON prefixed by an @mention (e.g. '@agent1... {"flight_number": ...}').
+    3. Pure JSON TextContent.
+    4. Plain text input fallback.
     """
-    # 1. Check for official card response metadata
+    # 1. Check for official card response metadata or selection in MetadataContent
     for item in msg.content:
         if isinstance(item, MetadataContent):
+            card_resp = extract_card_response(item)
+            if card_resp and card_resp.selection and isinstance(card_resp.selection, dict):
+                action = card_resp.selection.get("action", "")
+                return action, card_resp.selection
+
             metadata = item.metadata or {}
             selection_raw = metadata.get("selection")
             if selection_raw:
                 try:
                     parsed = json.loads(selection_raw) if isinstance(selection_raw, str) else selection_raw
-                    return parsed.get("action", ""), parsed
+                    if isinstance(parsed, dict):
+                        return parsed.get("action", ""), parsed
                 except Exception:
                     pass
 
-    # 2. Check for text content containing JSON or commands
-    full_text = ""
-    for item in msg.content:
-        if isinstance(item, TextContent):
-            full_text += item.text + " "
+    # 2. Check for text content containing JSON or plain commands
+    full_text = " ".join(item.text for item in msg.content if isinstance(item, TextContent)).strip()
 
-    full_text = full_text.strip()
-    if full_text.startswith("{") and full_text.endswith("}"):
-        try:
-            parsed = json.loads(full_text)
-            return parsed.get("action", ""), parsed
-        except Exception:
-            pass
+    # Look for a JSON object in the text (which may be preceded by an @agent mention)
+    if "{" in full_text and "}" in full_text:
+        start = full_text.find("{")
+        end = full_text.rfind("}")
+        if 0 <= start < end:
+            json_str = full_text[start : end + 1]
+            try:
+                parsed = json.loads(json_str)
+                if isinstance(parsed, dict):
+                    action = parsed.get("action", "")
+                    if not action and "flight_number" in parsed:
+                        action = "SUBMIT_INTAKE"
+                    return action, parsed
+            except Exception:
+                pass
 
     return "TEXT_INPUT", {"text": full_text}
 
+
+def _mask_pii(text: str) -> str:
+    """Helper to redact sensitive data (emails, booking refs) from logs."""
+    if not text:
+        return ""
+    if "@" in text:
+        parts = text.split("@")
+        user = parts[0]
+        masked_user = user[0] + "***" + user[-1] if len(user) > 2 else "***"
+        return f"{masked_user}@{parts[1]}"
+    if len(text) > 3:
+        return text[0] + "***" + text[-1]
+    return "***"
+
+
 @chat_proto.on_message(model=ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
-    session_id = str(msg.msg_id)
-    session = state_machine.get_or_create_session(session_id, sender=sender)
     action, payload = parse_incoming_selection(msg)
 
-    ctx.logger.info(f"Incoming message from {sender} | Action: {action} | Current State: {session['state']}")
+    # Resolve persistent session ID from payload if present, or assign a new one
+    incoming_session_id = payload.get("session_id")
+    if incoming_session_id:
+        session_id = str(incoming_session_id)
+        session = state_machine.get_or_create_session(session_id, sender=sender)
+    else:
+        # If no session_id is provided, generate a new stable ClaimPilot session
+        session_id = f"cp_{uuid4().hex[:12]}"
+        session = state_machine.get_or_create_session(session_id, sender=sender)
+
+    # Safe structured logging
+    ctx.logger.info(
+        f"Incoming message from {sender[:12]}... | Action: {action} | "
+        f"Session: {session_id} | State: {session.get('state')}"
+    )
 
     # -------------------------------------------------------------
-    # FLOW 1: INITIAL INTAKE
+    # FLOW 1: INITIAL INTAKE GREETING
     # -------------------------------------------------------------
     if action == "TEXT_INPUT":
         text = payload.get("text", "").lower()
-        # Initial greeting / trigger
-        form_card = build_intake_form_card()
+        form_card = build_intake_form_card(session_id=session_id)
         narration = (
             "👋 Welcome to **ClaimPilot** — your autonomous legal sentinel for flight disruptions.\n\n"
             "I deterministically evaluate claims under **EU261** (up to €600) and **DGCA CAR Section 3 Series M Part IV** (up to ₹10,000), "
@@ -120,14 +185,38 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     # FLOW 2: INTAKE SUBMITTED -> PARALLEL VERIFICATION & DETAIL CARD
     # -------------------------------------------------------------
     if action == "SUBMIT_INTAKE" or "flight_number" in payload:
-        flight_no = payload.get("flight_number", "AF1680").upper().strip()
-        flight_date = payload.get("flight_date", datetime.utcnow().strftime("%Y-%m-%d"))
-        passenger_name = payload.get("passenger_name", "Valued Passenger")
-        passenger_email = payload.get("passenger_email", DRY_RUN_EMAIL)
-        booking_ref = payload.get("booking_ref", "PNR123")
-        disruption_type = payload.get("disruption_type", "CANCELLATION")
-        notice_days = int(payload.get("notice_days", "0"))
-        airline_reason = payload.get("airline_reason", "Technical issue")
+        flight_no = str(payload.get("flight_number", "")).upper().strip()
+
+        # Field validation
+        if not flight_no:
+            ctx.logger.warning(f"Intake submission missing flight number | Session: {session_id}")
+            form_card = build_intake_form_card(session_id=session_id)
+            err_msg = create_chat_message(
+                "⚠️ **Validation Notice**: Flight number is required to perform an audit. Please fill in your flight details below:",
+                form_card
+            )
+            await ctx.send(sender, err_msg)
+            return
+
+        flight_date = str(payload.get("flight_date", "")).strip() or datetime.utcnow().strftime("%Y-%m-%d")
+        passenger_name = str(payload.get("passenger_name", "")).strip() or "Valued Passenger"
+        passenger_email = str(payload.get("passenger_email", "")).strip() or DRY_RUN_EMAIL
+        booking_ref = str(payload.get("booking_ref", "")).strip().upper() or "PNR123"
+        disruption_type = str(payload.get("disruption_type", "CANCELLATION")).strip().upper()
+        if disruption_type not in ["CANCELLATION", "DELAY"]:
+            disruption_type = "CANCELLATION"
+
+        try:
+            notice_days = int(payload.get("notice_days", "0"))
+        except (ValueError, TypeError):
+            notice_days = 0
+
+        airline_reason = str(payload.get("airline_reason", "")).strip() or "Technical defect"
+
+        ctx.logger.info(
+            f"Processing intake: Flight={flight_no}, Date={flight_date}, PNR={_mask_pii(booking_ref)}, "
+            f"Email={_mask_pii(passenger_email)}, Disruption={disruption_type}, Session={session_id}"
+        )
 
         # Resolve flight metadata
         flight_meta = CARRIER_FLIGHTS.get(flight_no, {
@@ -169,6 +258,7 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         )
 
         case_data = {
+            "session_id": session_id,
             "flight_number": flight_no,
             "flight_date": flight_date,
             "passenger_name": passenger_name,
@@ -187,8 +277,8 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         }
         state_machine.update_session(session_id, "EVALUATED", case_data)
 
-        # Dispatch Detail Card
-        detail_card = build_evidence_detail_card(verdict, weather_result)
+        # Dispatch Detail Card with persistent session_id
+        detail_card = build_evidence_detail_card(verdict, weather_result, session_id=session_id)
         narration = (
             f"📊 **Statutory Evaluation Complete for {flight_no}**\n\n"
             f"- **Jurisdiction**: {verdict.get('regime_title')}\n"
@@ -205,7 +295,16 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     # -------------------------------------------------------------
     if action == "PROCEED_TO_DRAFT":
         case_data = session.get("data", {})
-        claim_id = str(uuid4())[:8].upper()
+        if not case_data or "flight_number" not in case_data:
+            ctx.logger.warning(f"PROCEED_TO_DRAFT called without valid session data | Session: {session_id}")
+            form_card = build_intake_form_card(session_id=session_id)
+            await ctx.send(sender, create_chat_message(
+                "⚠️ **Session Expired or Not Found**: Please re-submit your flight intake form to evaluate your claim.",
+                form_card
+            ))
+            return
+
+        claim_id = case_data.get("claim_id") or str(uuid4())[:8].upper()
         case_data["claim_id"] = claim_id
 
         # Generate Notice via facts-only Drafter with strict AST Validator
@@ -218,7 +317,8 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
             claim_id=claim_id,
             passenger_name=case_data.get("passenger_name", "Passenger"),
             amount_str=amount_str,
-            dry_run_recipient=DRY_RUN_EMAIL
+            dry_run_recipient=DRY_RUN_EMAIL,
+            session_id=session_id
         )
 
         narration = (
@@ -236,8 +336,16 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     # -------------------------------------------------------------
     if action == "APPROVE_AND_DISPATCH":
         case_data = session.get("data", {})
+        if not case_data or "flight_number" not in case_data:
+            ctx.logger.warning(f"APPROVE_AND_DISPATCH called without valid session data | Session: {session_id}")
+            await ctx.send(sender, create_chat_message(
+                "⚠️ **Session Expired or Not Found**: No active claim was found to dispatch. Please submit a new claim.",
+                build_intake_form_card(session_id=session_id)
+            ))
+            return
+
         claim_id = payload.get("claim_id") or case_data.get("claim_id", str(uuid4())[:8].upper())
-        idempotency_key = f"dispatch_{claim_id}_{case_data.get('booking_ref')}"
+        idempotency_key = f"dispatch_{claim_id}_{case_data.get('booking_ref', 'REF')}"
 
         is_new_send = state_machine.record_claim(
             claim_id=claim_id,
@@ -253,6 +361,7 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         )
 
         if not is_new_send:
+            ctx.logger.info(f"Duplicate dispatch prevented by idempotency key: {idempotency_key}")
             await ctx.send(sender, create_chat_message(
                 f"ℹ️ **Idempotent Guard Active**: Claim CP-{claim_id} was already dispatched. No duplicate transmissions allowed."
             ))
@@ -282,16 +391,37 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
             "Demand reiterated for monetary remittance via direct bank transfer within 5 business days."
         )
         await ctx.send(sender, create_chat_message(narration))
+        case_data = session.get("data", {})
+        state_machine.update_session(session_id, "VOUCHER_REJECTED", case_data)
         return
 
+    if action == "ACCEPT_VOUCHER":
+        claim_id = payload.get("claim_id", "REF")
+        narration = f"ℹ️ Carrier travel voucher accepted for Claim CP-{claim_id}. Case concluded."
+        await ctx.send(sender, create_chat_message(narration))
+        case_data = session.get("data", {})
+        state_machine.update_session(session_id, "VOUCHER_ACCEPTED", case_data)
+        return
+
+    # -------------------------------------------------------------
+    # FLOW 6: CANCEL CLAIM
+    # -------------------------------------------------------------
     if action == "CANCEL_CLAIM":
+        state_machine.update_session(session_id, "CANCELLED", {})
         await ctx.send(sender, create_chat_message("❌ Claim cancelled by user. No documents were sent."))
         return
+
+    # Fallback for unrecognized action
+    ctx.logger.warning(f"Unrecognized action: {action} with payload keys: {list(payload.keys())}")
+    await ctx.send(sender, create_chat_message(
+        "👋 Welcome to ClaimPilot! Please complete the flight intake form to evaluate your disruption claim.",
+        build_intake_form_card(session_id=session_id)
+    ))
+
 
 # -------------------------------------------------------------
 # BACKGROUND SCHEDULER: DEADLINE EXPIRY & VOUCHER SIMULATION
 # -------------------------------------------------------------
-@agent.on_interval(period=5.0)
 async def check_claim_deadlines(ctx: Context):
     """Monitors active claims for statutory response deadlines."""
     expired_claims = state_machine.get_expired_claims()
@@ -305,7 +435,8 @@ async def check_claim_deadlines(ctx: Context):
         voucher_card = build_voucher_trap_card(
             claim_id=claim_id,
             voucher_amount=f"€{int(amount * 0.8)} Travel Credit",
-            statutory_cash=f"{amount} {currency}"
+            statutory_cash=f"{amount} {currency}",
+            session_id=session_id
         )
 
         escalation_narration = (
@@ -314,10 +445,26 @@ async def check_claim_deadlines(ctx: Context):
             f"The carrier's system automatically offered a travel voucher to close the dispute.\n\n"
             "⚠️ **Action Required**: Use the card below to counter the voucher offer and escalate to the Civil Aviation Authority."
         )
-        # Note: in real deployment, message is sent to the session sender
         ctx.logger.info(f"Escalation notification prepared for claim CP-{claim_id}")
 
-agent.include(chat_proto)
+
+def create_app_agent():
+    """Factory to create the runnable Agent instance."""
+    app_agent = Agent(
+        name=AGENT_NAME,
+        seed=AGENT_SEED,
+        port=8000,
+        mailbox=True,
+    )
+    app_agent.include(chat_proto, publish_manifest=True)
+    app_agent.on_interval(period=5.0)(check_claim_deadlines)
+    return app_agent
+
+
+# Export agent module attribute for external runners
+agent = None
 
 if __name__ == "__main__":
+    threading.Thread(target=_auto_connect_to_agentverse, daemon=True).start()
+    agent = create_app_agent()
     agent.run()

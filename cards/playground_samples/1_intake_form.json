@@ -1,0 +1,94 @@
+{
+  "title": "ClaimPilot \u2022 Flight Disruption Intake",
+  "fields": [
+    {
+      "name": "flight_number",
+      "kind": "text",
+      "label": "Flight Number (e.g. AF1680, 6E205, AI803)",
+      "required": true,
+      "placeholder": "AF1680"
+    },
+    {
+      "name": "flight_date",
+      "kind": "text",
+      "label": "Flight Date (YYYY-MM-DD)",
+      "required": true,
+      "placeholder": "2026-10-24"
+    },
+    {
+      "name": "booking_ref",
+      "kind": "text",
+      "label": "Booking Reference (6-character PNR)",
+      "required": true,
+      "placeholder": "AB12CD"
+    },
+    {
+      "name": "passenger_name",
+      "kind": "text",
+      "label": "Passenger Full Name",
+      "required": true,
+      "placeholder": "Alex Morgan"
+    },
+    {
+      "name": "passenger_email",
+      "kind": "email",
+      "label": "Notification Email",
+      "required": true,
+      "placeholder": "passenger@example.com"
+    },
+    {
+      "name": "disruption_type",
+      "kind": "select",
+      "label": "Disruption Type",
+      "required": true,
+      "options": [
+        {
+          "value": "CANCELLATION",
+          "label": "Flight Cancelled"
+        },
+        {
+          "value": "DELAY",
+          "label": "Flight Delayed (3+ Hours)"
+        }
+      ]
+    },
+    {
+      "name": "notice_days",
+      "kind": "select",
+      "label": "Advance Notice Communicated",
+      "required": true,
+      "options": [
+        {
+          "value": "0",
+          "label": "Less than 24 hours / Same Day"
+        },
+        {
+          "value": "3",
+          "label": "1 to 7 Days"
+        },
+        {
+          "value": "10",
+          "label": "7 to 14 Days"
+        },
+        {
+          "value": "18",
+          "label": "More than 14 Days"
+        }
+      ]
+    },
+    {
+      "name": "airline_reason",
+      "kind": "text",
+      "label": "Airline Stated Reason",
+      "required": false,
+      "placeholder": "e.g. Technical defect, Severe weather, Operational"
+    }
+  ],
+  "submit_cta": {
+    "label": "\u2696\ufe0f Evaluate Claim & Check Weather",
+    "selection": {
+      "action": "SUBMIT_INTAKE"
+    },
+    "primary": true
+  }
+}
